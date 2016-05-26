@@ -4,7 +4,9 @@ package.cpath = package.cpath .. ';.luarocks/lib/lua/5.2/?.so'
 
 require("./bot/utils")
 
-VERSION = '2'
+local f = assert(io.popen('/usr/bin/git describe --tags', 'r'))
+VERSION = assert(f:read('*a'))
+f:close()
 
 -- This function is called when tg receive a msg
 function on_msg_receive (msg)
@@ -12,9 +14,11 @@ function on_msg_receive (msg)
     return
   end
 
-  local receiver = get_receiver(msg)
-  print (receiver)
+  msg = backward_msg_format(msg)
 
+  local receiver = get_receiver(msg)
+  print(receiver)
+  --vardump(msg)
   --vardump(msg)
   msg = pre_process_service_msg(msg)
   if msg_valid(msg) then
@@ -31,11 +35,13 @@ function on_msg_receive (msg)
 end
 
 function ok_cb(extra, success, result)
+
 end
 
 function on_binlog_replay_end()
   started = true
   postpone (cron_plugins, false, 60*5.0)
+  -- See plugins/isup.lua as an example for cron
 
   _config = load_config()
 
@@ -52,7 +58,7 @@ function msg_valid(msg)
   end
 
   -- Before bot was started
-  if msg.date < now then
+  if msg.date < os.time() - 5 then
     print('\27[36mNot valid: old msg\27[39m')
     return false
   end
@@ -83,9 +89,8 @@ function msg_valid(msg)
   end
 
   if msg.from.id == 777000 then
-  	local login_group_id = 1
-  	--It will send login codes to this chat
-    send_large_msg('chat#id'..login_group_id, msg.text)
+    --send_large_msg(*group id*, msg.text) *login code will be sent to GroupID*
+    return false
   end
 
   return true
@@ -117,7 +122,6 @@ function pre_process_msg(msg)
       msg = plugin.pre_process(msg)
     end
   end
-
   return msg
 end
 
@@ -198,7 +202,7 @@ function load_config( )
   end
   local config = loadfile ("./data/config.lua")()
   for v,user in pairs(config.sudo_users) do
-    print("Allowed user: " .. user)
+    print("Sudo user: " .. user)
   end
   return config
 end
@@ -208,54 +212,56 @@ function create_config( )
   -- A simple config with basic plugins and ourselves as privileged user
   config = {
     enabled_plugins = {
-    "all",
-    "anti_ads",
-    "anti_bot",
-    "anti_spam",
-    "anti_chat",
-    "banhammer",
-    "boobs",
-    "bot_manager",
-    "botnumber",
-    "broadcast",
-    "calc",
-    "download_media",
-    "feedback",
-    "get",
-    "google",
-    "gps",
+	"admin",
+    "onservice",
+    "inrealm",
     "ingroup",
     "inpm",
-    "inrealm",
-    "invite",
-    "leave_ban",
-    "linkpv",
-    "location",
-    "lock_join",
-    "anti_fosh",
-    "left_group",
-    "owners",
-    "plugins",
-    "set",
-    "spam",
+    "banhammer",
     "stats",
-    "support",
-    "filterworld",
-    "server_manager",
-    "time",
-    "ip",
-    "github",
-    "filter_word",
-    "version"
+    "anti_spam",
+    "owners",
+    "set",
+    "get",
+    "broadcast",
+    "invite",
+    "getplug",
+    "addplug",
+    "note",
+    "semat",
+    "plugins",
+    "all",
+    "leave_ban",
+	"supergroup",
+	"whitelist",
+	"msg_checks"
     },
-	    sudo_users = {189308877},--Sudo users
-    disabled_channels = {},
+    sudo_users = {189308877},--Sudo users
     moderation = {data = 'data/moderation.json'},
-    about_text = [[
-https://github.com/BH-YAGHI/NOD32-BOT.git
+    about_text = [[Teleseed v4
+An advanced administration bot based on TG-CLI written in Lua
 
-channel : @Nod32team
-sodu : @behrooZyaghi
+https://github.com/SEEDTEAM/TeleSeed
+
+Admins
+@iwals [Founder]
+@imandaneshi [Developer]
+@POTUS [Developer]
+@seyedan25 [Manager]
+@aRandomStranger [Admin]
+
+Special thanks to
+awkward_potato
+Siyanew
+topkecleon
+Vamptacus
+
+Our channels
+@teleseedch [English]
+@iranseed [persian]
+
+Our website 
+http://teleseed.seedteam.org/
 ]],
     help_text_realm = [[
 Realm Commands:
@@ -269,7 +275,7 @@ Create a realm
 !setname [Name]
 Set realm name
 
-!setabout [GroupID] [Text]
+!setabout [group|sgroup] [GroupID] [Text]
 Set a group's about text
 
 !setrules [GroupID] [Text]
@@ -280,6 +286,9 @@ Lock a group's setting
 
 !unlock [GroupID] [setting]
 Unock a group's setting
+
+!settings [group|sgroup] [GroupID]
+Set settings for GroupID
 
 !wholist
 Get a list of members in group/realm
@@ -308,8 +317,14 @@ Get a list of all groups
 !list realms
 Get a list of all realms
 
+!support
+Promote user to support
+
+!-support
+Demote user from support
+
 !log
-Grt a logfile of current group or realm
+Get a logfile of current group or realm
 
 !broadcast [text]
 !broadcast Hello !
@@ -320,211 +335,227 @@ Only sudo users can run this command
 !bc 123456789 Hello !
 This command will send text to [group_id]
 
-ch: @Nod32team
 
+**You can use "#", "!", or "/" to begin all commands
+
+
+*Only admins and sudo can add bots in group
+
+
+*Only admins and sudo can use kick,ban,unban,newlink,setphoto,setname,lock,unlock,set rules,set about and settings commands
+
+*Only admins and sudo can use res, setowner, commands
 ]],
     help_text = [[
- Commands list :
- 
-1-banhammer list ^
- 
-!kick [username|id]
-(کیک کردن شخص (حتی با ریپلی)
+بن [آیدی.ڪد.ریپلای]
+تحریم ڪردن شخص از گروه
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+اخراج [آیدی.ریپلای]
+حذف ڪردن شخص موردنظر
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+اطلاعات
+نشان دادن اطلاعات شخص موردنظر
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+لیست بن
+لیست افراد تحریم شده
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+حذف بن [آیدی.ڪد]
+شڪستن تحریم شخص موردنظر
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+قوانین / توضیحات
+مشاهده قوانین یا توضیحات گروه
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+تنظیم [عکس/نام]
+تغییر عڪس و نام گروه
+*تنظیم عڪس باعث قفل شدن عڪس گروه میشود
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+ ترفیع [آیدی.ڪد.ریپلای]
+اضافه ڪردن مدیر به گروه
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+پاک کردن [قوانین/لیست مدیران/توضیحات]
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+تنزل [آیدی.ڪد.ریپلای]
+حذف یڪ مدیـــــر
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+ تنظیم [قوانین/توضیحات] (متن)
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+ قفل [همه/استیکر/اسم/ورود/اسپم/فارسی/تبلیغ/انگلیسی/فحش/تگ/خروج/ربات]
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+ باز کردن [همه/استیکر/اسم/ورود/عکس/اسپم/فارسی/تبلیغ/انگلیسی/فحش/تگ/خروج/ربات]
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+ حساسیت [5-20]
+تنظیم محدودیت اسپم
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+ تنظیمات
+مشاهده تنظیمات گروه
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+ لیست مدیران
+لیست مدیران گروه
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+لینک
+ارسال لینک در گروه
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+لینک جدید
+ساخت لینک جدید برای گروه
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+ لینک خصوصی
+ارسال لینک در پیوی
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+ ماشین حساب (عدد+*/-عدد)
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+ اخراج غیرفعال
+اخراج کردن غیر فعال ها
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+ ایدی :
+فقط با ریپلی میتوانید از این دستور استفاده کنید
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+خروج
+ترڪ ڪردن گروه
+∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─∙─
+]],
+	help_text_super =[[
+SuperGroup Commands:
 
-!ban [ username|id]
-(بن کردن افراد (حتی با ریپلی)
+!info
+Displays general info about the SuperGroup
 
-!unban [id]
-(انبن کردن افراد (همراه ایدی)
+!admins
+Returns SuperGroup admins list
 
-!kickinactive
-حذف اعضای غیرغعال گروه
-
-!kickme
-خروج از گروه
-
-2-Statistics list ^
-
-!who
-لیست+ایدی همه اعضا
-
-!all
-دریافت اطلاعات کلی گروه
-
-!stats
-امار کلی گروه
+!owner
+Returns group owner
 
 !modlist
-لیست مدیران گروه
+Returns Moderators list
 
-!banlist
-لیست اعضا بن شده
+!bots
+Lists bots in SuperGroup
 
-3-Rate Member ^
+!who
+Lists all users in SuperGroup
 
-!setowner [id]
-(id ایجاد مدیر جدید (همراه 
+!block
+Kicks a user from SuperGroup
+*Adds user to blocked list*
 
-!promote [username]
-(ایجاد ادمین جدید (همراه ریپلی)
+!ban
+Bans user from the SuperGroup
 
-!demote [username]
-(برکنار کردن ادمین (همراه ریپلی)
-
-4-General changes ^
-
-!setname [name]
-ایجاد اسم جدید برای گروه
-
-!setphoto
-ایجاد عکس جدید برای پروفایل گروه
-
-!set rules <text>
-ایجاد قانون جدید برای گروه
-
-!set about <text>
-ایجاد درباره گروه
-
-!setflood [value]
-حساسیت به اسپم در گروه
-
-5-View details ^
-
-!about
-درباره گروه
-
-!rules
-قوانین گروه
-
-!settings
-دیدن تنظیمات فعلی گروه
-
-!help
-لیست دستورات ربات
-
-6-Security Group ^
-
-!lock member 
-قفل ورود اعضا جدید
-
-!lock join
-قفل ورود اعضا جدید توسط لینک
-
-!lock name
-قفل اسم گروه
-
-!lock chat
-قفل چت ممنوع
-
-!lock ads
-قفل تبلیغات
-
-!lock leave
-قفل خروج=بن گروه
-
-!lock fosh
-ممنوع کردن فحش
-
-!lock chat
-قفل چت ممنوع گروه
-
-!antibot enable 
-ورود ربات ها ممنوع
-
-!antibot disable
-ورود ربات ها ازاد
-
-!unlock xxxx
-[*name*leave*member]
-[*fosh*ads]
-[chat*join*photo]
-باز کردن دستورات قفل شده
-
-7-Fun time ^
-
-!time country city
-ساعت کشور مورد نظر
-
-!loc country city
-مشخصات کشور و شهر مورد نظر
-
-!google
-سرچ مطلب مورد نظر از گوگل
- 
- !gps
- مکان کشور , شهر مورد نظر تحت گوگل
- 
- !calc 3+1
- انجام محاسبات ریاضی
-
-8-Service Provider ^
-
-!newlink
-ایجاد لینک جدید
-
-!link
-نمایش لینک گروه
-
-!linkpv
-فرستادن لینک گروه تو پیوی
-(حتما شماره ربات را سیو کنید)
-
-!invite username
-اضافه کردن شخص تو گروه
-(حتما شماره ربات را سیو کرده باشد)
-
-9-Member Profile and Group ^
-!owner
-مدیر گروه
+!unban
+Unbans user from the SuperGroup
 
 !id
-ایدی شخص مورد نظر
+Return SuperGroup ID or user id
+*For userID's: !id @username or reply !id*
 
-!res [username]
-در اوردن ایدی شخص مورد نظر
+!id from
+Get ID of user message is forwarded from
 
-!info 
-مخشصات فرد مورد نظر
+!kickme
+Kicks user from SuperGroup
+*Must be unblocked by owner or use join by pm to return*
+
+!setowner
+Sets the SuperGroup owner
+
+!promote [username|id]
+Promote a SuperGroup moderator
+
+!demote [username|id]
+Demote a SuperGroup moderator
+
+!setname
+Sets the chat name
+
+!setphoto
+Sets the chat photo
+
+!setrules
+Sets the chat rules
+
+!setabout
+Sets the about section in chat info(members list)
+
+!save [value] <text>
+Sets extra info for chat
+
+!get [value]
+Retrieves extra info for chat by value
+
+!newlink
+Generates a new group link
+
+!link
+Retireives the group link
+
+!rules
+Retrieves the chat rules
+
+!lock [links|flood|spam|Arabic|member|rtl|sticker|contacts|strict]
+Lock group settings
+*rtl: Delete msg if Right To Left Char. is in name*
+*strict: enable strict settings enforcement (violating user will be kicked)*
+
+!unlock [links|flood|spam|Arabic|member|rtl|sticker|contacts|strict]
+Unlock group settings
+*rtl: Delete msg if Right To Left Char. is in name*
+*strict: disable strict settings enforcement (violating user will not be kicked)*
+
+!mute [all|audio|gifs|photo|video|service]
+mute group message types
+*A "muted" message type is auto-deleted if posted
+
+!unmute [all|audio|gifs|photo|video|service]
+Unmute group message types
+*A "unmuted" message type is not auto-deleted if posted
+
+!setflood [value]
+Set [value] as flood sensitivity
 
 !settings
-تنظیمات فعلی گروه
+Returns chat settings
 
-10-filter word Mode ^
+!muteslist
+Returns mutes for chat
 
-!filter set (word)
-اضافه کردن کلمه جدید به لیست
+!muteuser [username]
+Mute a user in chat
+*If a muted user posts a message, the message is deleted automaically
+*only owners can mute | mods and owners can unmute
 
-!filter del (word)
-حذف کلمه از لیست
+!mutelist
+Returns list of muted users in chat
 
-!filter warn (word)
-اخطار به کلمه فیتر شده
+!banlist
+Returns SuperGroup ban list
 
-!filterlist
-لیست کلمات فیلتر شده
+!clean [rules|about|modlist|mutelist]
 
-11-bot number & support ^
+!del
+Deletes a message by reply
 
-!botnumber
-دریافت شماره ربات
+!public [yes|no]
+Set chat visibility in pm !chats or !chatlist commands
 
-!support
-دعوت سازنده ربات به گروه
-(در صورت وجود مشکل)
+!res [username]
+Returns users name and id by username
 
-!version
-ورژن ربات
 
-!feedback (text)
-ارسال نظرات به سازنده
+!log
+Returns group logs
+*Search for kick reasons using [#RTL|#spam|#lockmember]
 
-you can use both "/" and "!" 
-.شما میتوانید از ! و / استفاده کنید
+**You can use "#", "!", or "/" to begin all commands
 
-channel:
-G00D LUCK ^_^
-]]
-   }
+*Only owner can add members to SuperGroup
+(use invite link to invite)
+
+*Only moderators and owner can use block, ban, unban, newlink, link, setphoto, setname, lock, unlock, setrules, setabout and settings commands
+
+*Only owner can use res, setowner, promote, demote, and log commands
+
+]],
+  }
   serialize_to_file(config, './data/config.lua')
   print('saved config into ./data/config.lua')
 end
@@ -538,7 +569,7 @@ function on_user_update (user, what)
 end
 
 function on_chat_update (chat, what)
-
+  --vardump (chat)
 end
 
 function on_secret_chat_update (schat, what)
@@ -560,13 +591,12 @@ function load_plugins()
 
     if not ok then
       print('\27[31mError loading plugin '..v..'\27[39m')
-      print(tostring(io.popen("lua plugins/"..v..".lua"):read('*all')))
+	  print(tostring(io.popen("lua plugins/"..v..".lua"):read('*all')))
       print('\27[31m'..err..'\27[39m')
     end
 
   end
 end
-
 
 -- custom add
 function load_data(filename)
@@ -591,6 +621,7 @@ function save_data(filename, data)
 	f:close()
 
 end
+
 
 -- Call and postpone execution for cron plugins
 function cron_plugins()
